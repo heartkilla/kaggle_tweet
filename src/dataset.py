@@ -8,13 +8,16 @@ def process_data(tweet, selected_text, sentiment,
     """Preprocesses one data sample and returns a dict
     with targets and other useful info.
     """
-    len_sel_text = len(selected_text)
+    tweet = ' ' + ' '.join(str(tweet).split())
+    selected_text = ' ' + ' '.join(str(selected_text).split())
+
+    len_sel_text = len(selected_text) - 1
 
     # Get sel_text start and end idx
     idx_0 = None
     idx_1 = None
-    for ind in (i for i, e in enumerate(tweet) if e == selected_text[0]):
-        if tweet[ind:ind + len_sel_text] == selected_text:
+    for ind in (i for i, e in enumerate(tweet) if e == selected_text[1]):
+        if ' ' + tweet[ind:ind + len_sel_text] == selected_text:
             idx_0 = ind
             idx_1 = ind + len_sel_text - 1
             break
@@ -26,10 +29,10 @@ def process_data(tweet, selected_text, sentiment,
             char_targets[ct] = 1
 
     tokenized_tweet = tokenizer.encode(tweet)
-    # Vocab ids excluding 'CLS' and 'SEP'
-    input_ids_original = tokenized_tweet.ids[1:-1]
-    # Start and end char ids for each word
-    tweet_offsets = tokenized_tweet.offsets[1:-1]
+    # Vocab ids
+    input_ids_original = tokenized_tweet.ids
+    # Start and end char
+    tweet_offsets = tokenized_tweet.offsets
 
     # Get ids within tweet of words that have target char
     target_ids = []
@@ -41,27 +44,27 @@ def process_data(tweet, selected_text, sentiment,
     targets_end = target_ids[-1]
 
     # Sentiment 'word' id in vocab
-    sentiment_id = {'positive': 3893,
-                    'negative': 4997,
-                    'neutral': 8699}
+    sentiment_id = {'positive': 1313,
+                    'negative': 2430,
+                    'neutral': 7974}
 
-    # input = 'CLS' + 'sentiment' + 'SEP' + 'tweet' + 'SEP'
-    input_ids = [101] + [sentiment_id[sentiment]] + \
-                [102] + input_ids_original + [102]
-    # Assing token type 1 to 'tweet' and last 'SEP'
-    token_type_ids = [0, 0, 0] + [1] * (len(input_ids_original) + 1)
+    # input =
+    input_ids = [0] + [sentiment_id[sentiment]] + [2] + \
+                [2] + input_ids_original + [2]
+    # No token types in RoBERTa
+    token_type_ids = [0, 0, 0, 0] + [0] * (len(input_ids_original) + 1)
     # Mask of input without padding
     mask = [1] * len(token_type_ids)
     # Start and end char ids for each word including new tokens
-    tweet_offsets = [(0, 0)] * 3 + tweet_offsets + [(0, 0)]
+    tweet_offsets = [(0, 0)] * 4 + tweet_offsets + [(0, 0)]
     # Ids within tweet of words that have target char including new tokens
-    targets_start += 3
-    targets_end += 3
+    targets_start += 4
+    targets_end += 4
 
     # Input padding: new mask, token type ids, tweet offsets
     padding_len = max_len - len(input_ids)
     if padding_len > 0:
-        input_ids = input_ids + ([0] * padding_len)
+        input_ids = input_ids + ([1] * padding_len)
         mask = mask + ([0] * padding_len)
         token_type_ids = token_type_ids + ([0] * padding_len)
         tweet_offsets = tweet_offsets + ([(0, 0)] * padding_len)

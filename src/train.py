@@ -1,11 +1,13 @@
 import pandas as pd
 import transformers
 import torch
+import torch_xla.core.xla_model as xm
+import joblib
 
 import config
 import dataset
 import models
-import utils
+import train_utils
 import engine
 
 
@@ -23,7 +25,7 @@ def run(fold):
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=config.TRAIN_BATCH_SIZE,
-        num_workers=4)
+        num_workers=1)
 
     valid_dataset = dataset.TweetDataset(
         tweets=df_valid.text.values,
@@ -33,13 +35,14 @@ def run(fold):
     valid_data_loader = torch.utils.data.DataLoader(
         valid_dataset,
         batch_size=config.VALID_BATCH_SIZE,
-        num_workers=2)
+        num_workers=1)
 
-    device = torch.device('cuda')
-    model_config = transformers.BertConfig.from_pretrained(config.BERT_PATH)
+    device = xm.xla_device(fold + 1)
+    model_config = transformers.RobertaConfig.from_pretrained(
+        config.ROBERTA_PATH)
     model_config.output_hidden_states = True
     model = models.TweetModel(conf=model_config)
-    model.to(device)
+    model = model.to(device)
 
     num_train_steps = int(
         len(df_train) / config.TRAIN_BATCH_SIZE * config.EPOCHS)
@@ -52,13 +55,14 @@ def run(fold):
         {'params': [p for n, p in param_optimizer
                     if any(nd in n for nd in no_decay)],
          'weight_decay': 0.0}]
-    optimizer = transformers.AdamW(optimizer_parameters, lr=3e-5)
+    optimizer = transformers.AdamW(optimizer_parameters,
+                                   lr=config.LEARNING_RATE)
     scheduler = transformers.get_linear_schedule_with_warmup(
         optimizer,
         num_warmup_steps=0,
         num_training_steps=num_train_steps)
 
-    es = utils.EarlyStopping(patience=2, mode='max')
+    es = train_utils.EarlyStopping(patience=2, mode='max')
 
     print(f'Training is starting for fold={fold}')
 
@@ -66,13 +70,13 @@ def run(fold):
         engine.train_fn(train_data_loader, model, optimizer,
                         device, scheduler=scheduler)
         jaccard = engine.eval_fn(valid_data_loader, model, device)
-        print(f'Jaccard score = {jaccard}')
-        es(jaccard, model, model_path=f'model_{fold}.bin')
+        es(jaccard, model,
+           model_path=f'{config.MODEL_SAVE_PATH}/model_{fold}.bin')
         if es.early_stop:
             print('EarlyStopping')
             break
 
 
 if __name__ == '__main__':
-    for fold in range(config.N_FOLDS):
-        run(fold=fold)
+    joblib.Parallel(n_jobs=config.N_FOLDS, backend='threading')(
+        joblib.delayed(run)(i) for i in range(config.N_FOLDS))
