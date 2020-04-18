@@ -11,16 +11,17 @@ class TweetModel(transformers.BertPreTrainedModel):
             config.ROBERTA_PATH,
             config=conf)
         self.dropout = torch.nn.Dropout(0.1)
-        self.l0 = torch.nn.Linear(768 * 2, 2)
+        self.l0 = torch.nn.Linear(768 * config.N_LAST_HIDDEN, 2)
         torch.nn.init.normal_(self.l0.weight, std=0.02)
 
     def forward(self, ids, mask, token_type_ids):
-        # sequence_output of 3 hidden states
-        # (3, batch_size, num_tokens, 768)
+        # sequence_output of N_LAST_HIDDEN states
+        # (N_LAST_HIDDEN, batch_size, num_tokens, 768)
         _, _, out = self.roberta(ids, attention_mask=mask,
                                  token_type_ids=token_type_ids)
 
-        out = torch.cat((out[-1], out[-2], out[-3]), dim=-1)
+        out = torch.cat(
+            tuple(out[-i - 1] for i in range(config.N_LAST_HIDDEN)), dim=-1)
         out = self.dropout(out)
         logits = self.l0(out)
 

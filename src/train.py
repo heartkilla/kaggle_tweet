@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import transformers
 import torch
@@ -62,7 +63,9 @@ def run(fold):
         num_warmup_steps=0,
         num_training_steps=num_train_steps)
 
-    es = train_utils.EarlyStopping(patience=2, mode='max')
+    es = train_utils.EarlyStopping(patience=config.PATIENCE,
+                                   mode='max',
+                                   delta=config.EARLY_STOPPING_DELTA)
 
     print(f'Training is starting for fold={fold}')
 
@@ -76,7 +79,14 @@ def run(fold):
             print('EarlyStopping')
             break
 
+    return es.best_score
+
 
 if __name__ == '__main__':
-    joblib.Parallel(n_jobs=config.N_FOLDS, backend='threading')(
+    fold_scores = joblib.Parallel(n_jobs=config.N_FOLDS, backend='threading')(
         joblib.delayed(run)(i) for i in range(config.N_FOLDS))
+
+    for i in range(config.N_FOLDS):
+        print(f'Fold={i}, Jaccard = {fold_scores[i]}')
+    print(f'Mean = {np.mean(fold_scores)}')
+    print(f'Std = {np.std(fold_scores)}')
