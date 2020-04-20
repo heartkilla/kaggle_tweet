@@ -39,7 +39,7 @@ def run():
         test_dataset,
         shuffle=False,
         batch_size=config.VALID_BATCH_SIZE,
-        num_workers=1)
+        num_workers=4)
 
     with torch.no_grad():
         tk0 = tqdm.tqdm(data_loader, total=len(data_loader))

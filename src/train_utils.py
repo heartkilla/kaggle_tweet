@@ -1,5 +1,5 @@
 import numpy as np
-import torch_xla.core.xla_model as xm
+import torch
 
 
 class EarlyStopping:
@@ -40,5 +40,5 @@ class EarlyStopping:
             print(
                 'Validation score improved ({} --> {}). Saving model.'.format(
                     self.val_score, epoch_score))
-            xm.save(model.state_dict(), model_path)
+            torch.save(model.state_dict(), model_path)
         self.val_score = epoch_score

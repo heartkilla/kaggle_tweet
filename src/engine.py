@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import torch_xla.core.xla_model as xm
 import tqdm
 
 import utils
@@ -43,7 +42,7 @@ def train_fn(data_loader, model, optimizer, device, scheduler=None):
                                            token_type_ids=token_type_ids)
         loss = loss_fn(outputs_start, outputs_end, targets_start, targets_end)
         loss.backward()
-        xm.optimizer_step(optimizer, barrier=True)
+        optimizer.step()
         scheduler.step()
 
         outputs_start = torch.softmax(outputs_start,

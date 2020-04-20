@@ -2,13 +2,11 @@ import numpy as np
 import pandas as pd
 import transformers
 import torch
-import torch_xla.core.xla_model as xm
 import joblib
 
 import config
 import dataset
 import models
-import train_utils
 import engine
 
 
@@ -26,7 +24,8 @@ def run(fold):
     train_data_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=config.TRAIN_BATCH_SIZE,
-        num_workers=1)
+        num_workers=4,
+        shuffle=True)
 
     valid_dataset = dataset.TweetDataset(
         tweets=df_valid.text.values,
@@ -36,9 +35,10 @@ def run(fold):
     valid_data_loader = torch.utils.data.DataLoader(
         valid_dataset,
         batch_size=config.VALID_BATCH_SIZE,
-        num_workers=1)
+        num_workers=4,
+        shuffle=True)
 
-    device = xm.xla_device(fold + 1)
+    device = torch.device('cuda')
     model_config = transformers.RobertaConfig.from_pretrained(
         config.ROBERTA_PATH)
     model_config.output_hidden_states = True
@@ -59,13 +59,9 @@ def run(fold):
     optimizer = transformers.AdamW(optimizer_parameters,
                                    lr=config.LEARNING_RATE)
     scheduler = transformers.get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=0,
+        optimizer=optimizer,
+        num_warmup_steps=int(num_train_steps / config.EPOCHS),
         num_training_steps=num_train_steps)
-
-    es = train_utils.EarlyStopping(patience=config.PATIENCE,
-                                   mode='max',
-                                   delta=config.EARLY_STOPPING_DELTA)
 
     print(f'Training is starting for fold={fold}')
 
@@ -73,18 +69,17 @@ def run(fold):
         engine.train_fn(train_data_loader, model, optimizer,
                         device, scheduler=scheduler)
         jaccard = engine.eval_fn(valid_data_loader, model, device)
-        es(jaccard, model,
-           model_path=f'{config.MODEL_SAVE_PATH}/model_{fold}.bin')
-        if es.early_stop:
-            print('EarlyStopping')
-            break
+        torch.save(model.state_dict(),
+                   f'{config.MODEL_SAVE_PATH}/model_{fold}.bin')
 
-    return es.best_score
+    return jaccard
 
 
 if __name__ == '__main__':
-    fold_scores = joblib.Parallel(n_jobs=config.N_FOLDS, backend='threading')(
-        joblib.delayed(run)(i) for i in range(config.N_FOLDS))
+    fold_scores = []
+    for fold in range(config.N_FOLDS):
+        fold_score = run(fold=fold)
+        fold_scores.append(fold_score)
 
     for i in range(config.N_FOLDS):
         print(f'Fold={i}, Jaccard = {fold_scores[i]}')
