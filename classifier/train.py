@@ -2,12 +2,13 @@ import numpy as np
 import pandas as pd
 import transformers
 import torch
-import joblib
+import torchcontrib
 
 import config
 import dataset
 import models
 import engine
+import utils
 
 
 def run(fold):
@@ -36,11 +37,11 @@ def run(fold):
         valid_dataset,
         batch_size=config.VALID_BATCH_SIZE,
         num_workers=4,
-        shuffle=True)
+        shuffle=False)
 
     device = torch.device('cuda')
     model_config = transformers.RobertaConfig.from_pretrained(
-        config.ROBERTA_PATH)
+        config.MODEL_CONFIG)
     model_config.output_hidden_states = True
     model = models.TweetModel(conf=model_config)
     model = model.to(device)
@@ -52,15 +53,20 @@ def run(fold):
     optimizer_parameters = [
         {'params': [p for n, p in param_optimizer
                     if not any(nd in n for nd in no_decay)],
-         'weight_decay': 0.001},
+         'weight_decay': config.WEIGHT_DECAY},
         {'params': [p for n, p in param_optimizer
                     if any(nd in n for nd in no_decay)],
          'weight_decay': 0.0}]
-    optimizer = transformers.AdamW(optimizer_parameters,
-                                   lr=config.LEARNING_RATE)
+    base_opt = transformers.AdamW(optimizer_parameters,
+                                  lr=config.LEARNING_RATE)
+    optimizer = torchcontrib.optim.SWA(
+        base_opt,
+        swa_start=int(num_train_steps * config.SWA_RATIO),
+        swa_freq=config.SWA_FREQ,
+        swa_lr=None)
     scheduler = transformers.get_linear_schedule_with_warmup(
         optimizer=optimizer,
-        num_warmup_steps=int(num_train_steps / config.EPOCHS),
+        num_warmup_steps=int(num_train_steps * config.WARMUP_RATIO),
         num_training_steps=num_train_steps)
 
     print(f'Training is starting for fold={fold}')
@@ -69,18 +75,25 @@ def run(fold):
         engine.train_fn(train_data_loader, model, optimizer,
                         device, scheduler=scheduler)
         jaccard = engine.eval_fn(valid_data_loader, model, device)
-        torch.save(model.state_dict(),
-                   f'{config.MODEL_SAVE_PATH}/model_{fold}.bin')
+
+    if config.USE_SWA:
+        optimizer.swap_swa_sgd()
+
+    torch.save(model.state_dict(),
+               f'{config.MODEL_SAVE_PATH}/model_{fold}.bin')
 
     return jaccard
 
 
 if __name__ == '__main__':
+    utils.seed_everything(seed=config.SEED)
+
     fold_scores = []
-    for fold in range(config.N_FOLDS):
-        fold_score = run(fold=fold)
+    for i in range(config.N_FOLDS):
+        fold_score = run(i)
         fold_scores.append(fold_score)
 
+    print('\nScores without SWA:')
     for i in range(config.N_FOLDS):
         print(f'Fold={i}, Jaccard = {fold_scores[i]}')
     print(f'Mean = {np.mean(fold_scores)}')

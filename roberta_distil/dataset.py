@@ -1,6 +1,15 @@
+import numpy as np
 import torch
 
 import config
+
+
+def jaccard_array(a, b):
+    """Calculates Jaccard on arrays."""
+    a = set(a)
+    b = set(b)
+    c = a.intersection(b)
+    return float(len(c)) / (len(a) + len(b) - len(c))
 
 
 def process_data(tweet, selected_text, sentiment,
@@ -48,7 +57,31 @@ def process_data(tweet, selected_text, sentiment,
                     'negative': 2430,
                     'neutral': 7974}
 
-    # input =
+    # Soft Jaccard labels
+    # ----------------------------------
+    n = len(input_ids_original)
+    sentence = np.arange(n)
+    answer = sentence[targets_start:targets_end + 1]
+
+    start_labels = np.zeros(n)
+    for i in range(targets_end + 1):
+        jac = jaccard_array(answer, sentence[i:targets_end + 1])
+        start_labels[i] = jac
+    start_labels = (1 - config.SOFT_ALPHA) * start_labels / start_labels.sum()
+    start_labels[targets_start] += config.SOFT_ALPHA
+
+    end_labels = np.zeros(n)
+    for i in range(targets_start, n):
+        jac = jaccard_array(answer, sentence[targets_start:i + 1])
+        end_labels[i] = jac
+    end_labels = (1 - config.SOFT_ALPHA) * end_labels / end_labels.sum()
+    end_labels[targets_end] += config.SOFT_ALPHA
+
+    start_labels = [0, 0, 0, 0] + list(start_labels) + [0]
+    end_labels = [0, 0, 0, 0] + list(end_labels) + [0]
+    # ----------------------------------
+
+    # Input for RoBERTa
     input_ids = [0] + [sentiment_id[sentiment]] + [2] + \
                 [2] + input_ids_original + [2]
     # No token types in RoBERTa
@@ -60,6 +93,8 @@ def process_data(tweet, selected_text, sentiment,
     # Ids within tweet of words that have target char including new tokens
     targets_start += 4
     targets_end += 4
+    orig_start = 4
+    orig_end = len(input_ids_original) + 3
 
     # Input padding: new mask, token type ids, tweet offsets
     padding_len = max_len - len(input_ids)
@@ -68,16 +103,26 @@ def process_data(tweet, selected_text, sentiment,
         mask = mask + ([0] * padding_len)
         token_type_ids = token_type_ids + ([0] * padding_len)
         tweet_offsets = tweet_offsets + ([(0, 0)] * padding_len)
+        start_labels = start_labels + ([0] * padding_len)
+        end_labels = end_labels + ([0] * padding_len)
+
+    targets_select = [0] * len(token_type_ids)
+    for i in range(len(targets_select)):
+        if i in target_ids:
+            targets_select[i + 4] = 1
 
     return {'ids': input_ids,
             'mask': mask,
             'token_type_ids': token_type_ids,
-            'targets_start': targets_start,
-            'targets_end': targets_end,
+            'start_labels': start_labels,
+            'end_labels': end_labels,
+            'orig_start': orig_start,
+            'orig_end': orig_end,
             'orig_tweet': tweet,
             'orig_selected': selected_text,
             'sentiment': sentiment,
-            'offsets': tweet_offsets}
+            'offsets': tweet_offsets,
+            'targets_select': targets_select}
 
 
 class TweetDataset:
@@ -93,7 +138,7 @@ class TweetDataset:
 
     def __getitem__(self, item):
         """Returns preprocessed data sample as dict with
-        integers converted to tensors.
+        data converted to tensors.
         """
         data = process_data(self.tweets[item],
                             self.selected_texts[item],
@@ -105,11 +150,15 @@ class TweetDataset:
                 'mask': torch.tensor(data['mask'], dtype=torch.long),
                 'token_type_ids': torch.tensor(data['token_type_ids'],
                                                dtype=torch.long),
-                'targets_start': torch.tensor(data['targets_start'],
-                                              dtype=torch.long),
-                'targets_end': torch.tensor(data['targets_end'],
-                                            dtype=torch.long),
+                'start_labels': torch.tensor(data['start_labels'],
+                                             dtype=torch.float),
+                'end_labels': torch.tensor(data['end_labels'],
+                                           dtype=torch.float),
+                'orig_start': data['orig_start'],
+                'orig_end': data['orig_end'],
                 'orig_tweet': data['orig_tweet'],
                 'orig_selected': data['orig_selected'],
                 'sentiment': data['sentiment'],
-                'offsets': torch.tensor(data['offsets'], dtype=torch.long)}
+                'offsets': torch.tensor(data['offsets'], dtype=torch.long),
+                'targets_select': torch.tensor(data['targets_select'],
+                                               dtype=torch.float)}
