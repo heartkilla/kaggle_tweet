@@ -1,4 +1,4 @@
-# Kaggle Tweet Sentiment Extraction Competition: 1st place solution (Dark of the Moon team) 
+# [Kaggle Tweet Sentiment Extraction Competition](https://www.kaggle.com/c/tweet-sentiment-extraction/leaderboard): 1st place solution (Dark of the Moon team) 
 ## First level models
 ### Heartkilla (me)
 
@@ -87,7 +87,7 @@ Adam optimizer, linear decay schedule with no warmup, SmoothedCELoss such as in 
 
 ## Extra stuff
 
-We did predictions on neutral texts as well, our models were slightly better than doing `selected_text = text`. However, we do `selected_text = text` when `start_idx &gt; end_idx`.
+We did predictions on neutral texts as well, our models were slightly better than doing `selected_text = text`. However, we do `selected_text = text` when `start_idx > end_idx`.
 
 Once [the pattern](https://www.kaggle.com/c/tweet-sentiment-extraction/discussion/159254) in the labels is detected, it is possible to clean the labels to improve level 1 models performance. Since we found the pattern a bit too late, we decided to stick with the ensembles we already built instead of retraining everything from scratch.
  
