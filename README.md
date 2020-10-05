@@ -1,4 +1,7 @@
 # [Kaggle Tweet Sentiment Extraction Competition](https://www.kaggle.com/c/tweet-sentiment-extraction/leaderboard): 1st place solution (Dark of the Moon team) 
+
+This repository contains the models that I implemented for this competition as a part of our team.
+
 ## First level models
 ### Heartkilla (me)
 
