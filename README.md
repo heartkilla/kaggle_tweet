@@ -10,6 +10,7 @@ This repository contains the models that I implemented for this competition as a
 - Multi Sample Dropout, AdamW, linear warmup schedule
 - I used Colab Pro for training.
 - Custom loss: Jaccard-based Soft Labels
+
 Since Cross Entropy doesn’t optimize Jaccard directly, I tried different loss functions to penalize far predictions more than close ones. SoftIOU used in segmentation didn’t help so I came up with a custom loss that modifies usual label smoothing by computing Jaccard on the token level. I then use this new target labels and optimize KL divergence. Alpha here is a parameter to balance between usual CE and Jaccard-based labeling.
 ![](https://www.googleapis.com/download/storage/v1/b/kaggle-user-content/o/inbox%2F2000545%2F9341bede28263bcf0e9bb259ac790338%2FScreen%20Shot%202020-05-30%20at%2017.31.22.png?generation=1592405028556842&amp;alt=media)
 I’ve noticed that probabilities in this case change pretty steeply so I decided to smooth it a bit by adding a square term.
